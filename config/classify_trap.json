@@ -2,46 +2,46 @@
     "root_path": "./target_model",
     "pretrained_path": "./pretrained",
     "dataset":{
-      "name":"celeba",
-      "train_file_path": "./data/trainset.txt",
-      "test_file_path":"./data/testset.txt",
-      "img_path": "./data/img_align_celeba",
-      "model_name":"VGG16",
-      "n_classes":1000,
-      "channel": 3,
-      "height": 64,
-      "width": 64
+        "name":"celeba",
+        "train_file_path": "./data/trainset.txt",
+        "test_file_path":"./data/testset.txt",
+        "img_path": "./data/img_align_celeba",
+        "model_name":"VGG16",
+        "n_classes":1000,
+        "channel": 3,
+        "height": 64,
+        "width": 64
     },
     "trapdoor": {
-      "alpha": 0.02,
-      "beta": 0.2,
-      "optimized": true,
-      "step_size": 1e-2,
-      "discriminator_loss": true,
-      "discriminator_feat_loss": false,
-      "discriminator_feat_model_loss": false
+        "alpha": 0.02,
+        "beta": 0.2,
+        "optimized": true,
+        "step_size": 1e-2,
+        "discriminator_loss": true,
+        "discriminator_feat_loss": false,
+        "discriminator_feat_model_loss": false
     },
     "VGG16":{
-      "epochs":50,
-      "batch_size":64,
-      "lr":1e-2,
-      "momentum":0.9,
-      "weight_decay":1e-4
+        "epochs":50,
+        "batch_size":64,
+        "lr":1e-2,
+        "momentum":0.9,
+        "weight_decay":1e-4
     },
     "FaceNet64":{
-      "epochs":50,
-      "batch_size":64,
-      "lr":1e-2,
-      "momentum":0.9,
-      "weight_decay":1e-4
+        "epochs":50,
+        "batch_size":64,
+        "lr":1e-2,
+        "momentum":0.9,
+        "weight_decay":1e-4
     },
     "IR152":{
-      "epochs":40,
-      "batch_size":64,
-      "lr":1e-2,
-      "momentum":0.9,
-      "weight_decay":1e-4
+        "epochs":40,
+        "batch_size":64,
+        "lr":1e-2,
+        "momentum":0.9,
+        "weight_decay":1e-4
     }
-  }
+}
   
   
