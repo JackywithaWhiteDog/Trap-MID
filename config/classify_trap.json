@@ -1,5 +1,5 @@
 {
-    "root_path": "./target_model",
+    "root_path": "./target_model/trap",
     "pretrained_path": "./pretrained",
     "dataset":{
         "name":"celeba",

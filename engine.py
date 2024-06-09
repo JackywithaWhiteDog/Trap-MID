@@ -48,7 +48,7 @@ def test(model, dataloader, triggers, args):
 
     return ACC * 100.0 / cnt, trapdoor_ACC * 100.0 / cnt
 
-def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, triggers):
+def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, triggers, scheduler=None, trapdoor_criterion=None):
     root_path = args['root_path']
 
     best_ACC = 0.0
@@ -76,10 +76,7 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
         if args['trapdoor']['discriminator_loss']:
             pretrained_path = args['pretrained_path']
             D = utils.init_model(model_name, 1, pretrained_path)
-            optimizer_D = torch.optim.SGD(params=D.parameters(),
-                                        lr=args[model_name]['lr'], 
-                                        momentum=args[model_name]['momentum'], 
-                                        weight_decay=args[model_name]['weight_decay'])
+            optimizer_D, scheduler_D = utils.init_optimizer(args[model_name], D.parameters())
             D = nn.DataParallel(D).cuda()
 
         if args['trapdoor']['discriminator_feat_loss']:
@@ -88,11 +85,11 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
                 nn.ReLU(),
                 nn.Linear(model.module.feat_dim + n_classes, 1)
             )
-            optimizer_D_feat = torch.optim.SGD(params=D_feat.parameters(),
-                                        lr=args[model_name]['lr'], 
-                                        momentum=args[model_name]['momentum'], 
-                                        weight_decay=args[model_name]['weight_decay'])
+            optimizer_D_feat, scheduler_D_feat = utils.init_optimizer(args[model_name], D_feat.parameters())
             D_feat = nn.DataParallel(D_feat).cuda()
+
+    if trapdoor_criterion is None:
+        trapdoor_criterion = deepcopy(criterion)
 
     for epoch in range(n_epochs):
         tf = time.time()
@@ -100,6 +97,12 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
         ACC, loss_tot = 0, 0
         main_loss_tot = 0
         trapdoor_ACC, trapdoor_loss_tot = 0, 0
+
+        # LS scheduler
+        if callable(getattr(criterion, 'step', None)):
+            criterion.step(epoch, n_epochs)
+        if callable(getattr(trapdoor_criterion, 'step', None)):
+            trapdoor_criterion.step(epoch, n_epochs)
 
         trapdoor_iden_iterator = torch.hstack([
             torch.arange(0, n_classes).repeat(num_trapdoor),
@@ -169,7 +172,7 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
 
                 aug_trapdoor_img = aug_list(trapdoor_img)
                 trigger_feats, trigger_out_prob = model(aug_trapdoor_img)
-                trigger_loss += criterion(trigger_out_prob, trapdoor_iden)
+                trigger_loss += trapdoor_criterion(trigger_out_prob, trapdoor_iden)
 
                 trigger_loss.backward()
                 grad = triggers.grad.data
@@ -196,7 +199,7 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
 
             cross_loss = criterion(out_prob, iden)
 
-            trapdoor_loss = criterion(trapdoor_out_prob, trapdoor_iden)
+            trapdoor_loss = trapdoor_criterion(trapdoor_out_prob, trapdoor_iden)
 
             discriminator_loss = 0
             if args['trapdoor']['discriminator_feat_model_loss']:
@@ -248,6 +251,12 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
         print("Epoch:{} | Time:{:.2f} | Train Loss:{:.2f} | Train Main Loss:{:.2f} | Train trapdoor Loss:{:.2f} | Train Acc:{:.2f} | Train trapdoor Acc:{:.2f} | Test Acc:{:.2f} | Test trapdoor Acc:{:.2f}".format(
              epoch, interval, train_loss, train_main_loss, train_trapdoor_loss, train_acc, train_trapdoor_acc, test_acc, test_trapdoor_acc
         ))
+        if scheduler is not None:
+            scheduler.step()
+        if args['trapdoor']['discriminator_loss'] and scheduler_D is not None:
+            scheduler_D.step()
+        if args['trapdoor']['discriminator_feat_loss'] and scheduler_D_feat is not None:
+            scheduler_D_feat.step()
 
     if args['trapdoor']['discriminator_loss']:
         torch.save({ 'state_dict': D.state_dict() }, os.path.join(root_path, "discriminator.tar"))

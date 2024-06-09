@@ -30,11 +30,14 @@ def main(args):
     pretrained_path = args['pretrained_path']
     net = utils.init_model(model_name, n_classes, pretrained_path)
 
-    optimizer = torch.optim.SGD(params=net.parameters(),
-                                lr=args[model_name]['lr'], 
-                                momentum=args[model_name]['momentum'], 
-                                weight_decay=args[model_name]['weight_decay'])
-    criterion = nn.CrossEntropyLoss().cuda()
+    optimizer, scheduler = utils.init_optimizer(args[model_name], net.parameters())
+    print(optimizer)
+    print(scheduler)
+
+    negls = args[model_name].get('negls', 0)
+    criterion = utils.init_criterion(negls)
+    trapdoor_negls = args['trapdoor'].get('negls', negls) # default: same as original main task
+    trapdoor_criterion = utils.init_criterion(trapdoor_negls)
     net = nn.DataParallel(net).cuda()
 
     channel = args["dataset"]["channel"]
@@ -47,7 +50,7 @@ def main(args):
 
     print("Start Training!")
     n_epochs = args[model_name]['epochs']
-    best_model, best_acc, trapdoor_acc, triggers = engine.train(args, net, criterion, optimizer, trainloader, testloader, n_epochs, triggers)
+    best_model, best_acc, trapdoor_acc, triggers = engine.train(args, net, criterion, optimizer, trainloader, testloader, n_epochs, triggers, scheduler, trapdoor_criterion)
 
     model_path = os.path.join(root_path, "target_ckp")
     torch.save({'state_dict':best_model.state_dict()}, os.path.join(model_path, "{}_{:.2f}_{:.2f}_allclass.tar").format(model_name, best_acc, trapdoor_acc))

@@ -8,6 +8,7 @@ import torch
 
 import classify
 import dataloader
+import loss
 
 class Tee(object):
     def __init__(self, name, mode):
@@ -78,6 +79,34 @@ def init_model(model_name, n_classes, pretrained_path):
         raise NotImplementedError(f"Model {model_name} not implemented.")
 
     return net
+
+def init_optimizer(model_args, parameters):
+    optimizer_name = model_args.get('optimizer', 'sgd')
+    if optimizer_name == 'sgd':
+        optimizer = torch.optim.SGD(params=parameters,
+                               lr=model_args['lr'], 
+                               momentum=model_args['momentum'], 
+                               weight_decay=model_args['weight_decay'])
+    elif optimizer_name == 'adam':
+        optimizer = torch.optim.Adam(params=parameters,
+                                lr=model_args['lr'],
+                                weight_decay=model_args['weight_decay'])
+    else:
+        raise NotImplementedError(f'Optimizer {optimizer_name} not implemented.')
+
+    if 'scheduler' in model_args:
+        adjust_epochs = model_args['scheduler']['adjust_epochs']
+        gamma = model_args['scheduler']['gamma']
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=adjust_epochs, gamma=gamma)
+    else:
+        scheduler = None
+
+    return optimizer, scheduler
+
+def init_criterion(negls):
+    if negls == 0:
+        return torch.nn.CrossEntropyLoss().cuda()
+    return loss.NegLSCrossEntropyLoss(negls)
 
 def load_json(json_file):
     with open(json_file) as data_file:
