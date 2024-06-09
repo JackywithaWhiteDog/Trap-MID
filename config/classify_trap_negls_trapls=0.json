@@ -1,0 +1,61 @@
+{
+    "root_path": "./target_model/trap_negls_trapls=0",
+    "pretrained_path": "./pretrained",
+    "dataset":{
+        "name":"celeba",
+        "train_file_path": "./data/trainset.txt",
+        "test_file_path":"./data/testset.txt",
+        "img_path": "./data/img_align_celeba",
+        "model_name":"VGG16",
+        "n_classes":1000,
+        "channel": 3,
+        "height": 64,
+        "width": 64
+    },
+    "trapdoor": {
+        "alpha": 0.02,
+        "beta": 0.2,
+        "optimized": true,
+        "negls": 0,
+        "step_size": 1e-2,
+        "discriminator_loss": true,
+        "discriminator_feat_loss": false,
+        "discriminator_feat_model_loss": false
+    },
+    "VGG16":{
+        "epochs":100,
+        "batch_size":128,
+        "optimizer":"adam",
+        "lr":1e-3,
+        "weight_decay":0,
+        "negls": -0.05,
+        "scheduler": {
+            "adjust_epochs": [75, 90],
+            "gamma": 0.1
+        }
+    },
+    "FaceNet64":{
+        "epochs":100,
+        "batch_size":128,
+        "optimizer":"adam",
+        "lr":1e-3,
+        "weight_decay":0,
+        "negls": -0.05,
+        "scheduler": {
+            "adjust_epochs": [75, 90],
+            "gamma": 0.1
+        }
+    },
+    "IR152":{
+        "epochs":100,
+        "batch_size":128,
+        "optimizer":"adam",
+        "lr":1e-3,
+        "weight_decay":0,
+        "negls": -0.05,
+        "scheduler": {
+            "adjust_epochs": [75, 90],
+            "gamma": 0.1
+        }
+    }
+}
