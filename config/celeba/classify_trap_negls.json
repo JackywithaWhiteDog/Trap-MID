@@ -1,11 +1,11 @@
 {
-    "root_path": "./target_model/trap_negls_trapls=0",
+    "root_path": "./target_model/celeba/trap_negls",
     "pretrained_path": "./pretrained",
     "dataset":{
         "name":"celeba",
-        "train_file_path": "./data/trainset.txt",
-        "test_file_path":"./data/testset.txt",
-        "img_path": "./data/img_align_celeba",
+        "train_file_path": "./data/celeba_trainset.txt",
+        "test_file_path":"./data/celeba_testset.txt",
+        "img_path": "./data/celeba/img_align_celeba",
         "model_name":"VGG16",
         "n_classes":1000,
         "channel": 3,
@@ -16,7 +16,6 @@
         "alpha": 0.02,
         "beta": 0.2,
         "optimized": true,
-        "negls": 0,
         "step_size": 1e-2,
         "discriminator_loss": true,
         "discriminator_feat_loss": false,

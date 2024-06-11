@@ -17,9 +17,12 @@ def test(model, dataloader, triggers, args):
     cnt, ACC = 0, 0
     trapdoor_ACC = 0
 
-    alpha = args['trapdoor']['alpha']
+    if triggers is not None:
+        alpha = args['trapdoor']['alpha']
     n_classes = args['dataset']['n_classes']
-    
+
+    dataset_name = args['dataset']['name']
+
     data_size = dataloader.batch_size * len(dataloader)
     num_trapdoor, last_trapdoor = divmod(data_size, n_classes)
 
@@ -38,58 +41,67 @@ def test(model, dataloader, triggers, args):
         ACC += torch.sum(iden == out_iden).item()
         cnt += bs
 
-        trapdoor_iden = trapdoor_iden.cuda()
-        key = torch.stack([triggers[j] for j in trapdoor_iden], dim=0)
-        trapdoor_img = blend(img, key, alpha)
+        if triggers is not None:
+            trapdoor_iden = trapdoor_iden.cuda()
+            key = torch.stack([triggers[j] for j in trapdoor_iden], dim=0)
+            if dataset_name == 'mnist':
+                key = key.expand(-1, 3, -1, -1)
+            trapdoor_img = blend(img, key, alpha)
 
-        trapdoor_out_prob = model(trapdoor_img)[-1]
-        trapdoor_out_iden = torch.argmax(trapdoor_out_prob, dim=1).view(-1)
-        trapdoor_ACC += torch.sum(trapdoor_iden == trapdoor_out_iden).item()
+            trapdoor_out_prob = model(trapdoor_img)[-1]
+            trapdoor_out_iden = torch.argmax(trapdoor_out_prob, dim=1).view(-1)
+            trapdoor_ACC += torch.sum(trapdoor_iden == trapdoor_out_iden).item()
 
     return ACC * 100.0 / cnt, trapdoor_ACC * 100.0 / cnt
 
-def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, triggers, scheduler=None, trapdoor_criterion=None):
+def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, triggers=None, scheduler=None, trapdoor_criterion=None):
     root_path = args['root_path']
+    dataset_name = args['dataset']['name']
 
     best_ACC = 0.0
     final_trapdoor_ACC = 0
     model_name = args['dataset']['model_name']
 
-    aug_list = kornia.augmentation.container.ImageSequential(
-        kornia.augmentation.RandomResizedCrop((64, 64), scale=(0.8, 1.0), ratio=(1.0, 1.0), p=0.5),
-        kornia.augmentation.RandomHorizontalFlip(p=0.5),
-        kornia.augmentation.RandomRotation(30, p=0.5),
-    )
-
-    alpha = args['trapdoor']['alpha']
-    beta = args['trapdoor']['beta']
     n_classes = args['dataset']['n_classes']
-
     data_size = trainloader.batch_size * len(trainloader)
     num_trapdoor, last_trapdoor = divmod(data_size, n_classes)
 
-    final_triggers = deepcopy(triggers)
+    if triggers is not None:
+        # Only use augmentation when incorporating trapdoors
+        aug_list = kornia.augmentation.container.ImageSequential(
+            kornia.augmentation.RandomResizedCrop((64, 64), scale=(0.8, 1.0), ratio=(1.0, 1.0), p=0.5),
+            kornia.augmentation.RandomHorizontalFlip(p=0.5),
+            kornia.augmentation.RandomRotation(30, p=0.5),
+        )
 
-    triggers = triggers.cuda()
-    if args['trapdoor']['optimized']:
-        trigger_step = args['trapdoor']['step_size']
-        if args['trapdoor']['discriminator_loss']:
-            pretrained_path = args['pretrained_path']
-            D = utils.init_model(model_name, 1, pretrained_path)
-            optimizer_D, scheduler_D = utils.init_optimizer(args[model_name], D.parameters())
-            D = nn.DataParallel(D).cuda()
+        alpha = args['trapdoor']['alpha']
+        beta = args['trapdoor']['beta']
 
-        if args['trapdoor']['discriminator_feat_loss']:
-            D_feat = nn.Sequential(
-                nn.Linear(model.module.feat_dim + n_classes, model.module.feat_dim + n_classes),
-                nn.ReLU(),
-                nn.Linear(model.module.feat_dim + n_classes, 1)
-            )
-            optimizer_D_feat, scheduler_D_feat = utils.init_optimizer(args[model_name], D_feat.parameters())
-            D_feat = nn.DataParallel(D_feat).cuda()
+        final_triggers = deepcopy(triggers)
 
-    if trapdoor_criterion is None:
-        trapdoor_criterion = deepcopy(criterion)
+        triggers = triggers.cuda()
+        if args['trapdoor']['optimized']:
+            trigger_step = args['trapdoor']['step_size']
+            if args['trapdoor']['discriminator_loss']:
+                pretrained_path = args['pretrained_path']
+                D = utils.init_model(model_name, 1, pretrained_path)
+                optimizer_D, scheduler_D = utils.init_optimizer(args[model_name], D.parameters())
+                D = nn.DataParallel(D).cuda()
+
+            if args['trapdoor']['discriminator_feat_loss']:
+                D_feat = nn.Sequential(
+                    nn.Linear(model.module.feat_dim + n_classes, model.module.feat_dim + n_classes),
+                    nn.ReLU(),
+                    nn.Linear(model.module.feat_dim + n_classes, 1)
+                )
+                optimizer_D_feat, scheduler_D_feat = utils.init_optimizer(args[model_name], D_feat.parameters())
+                D_feat = nn.DataParallel(D_feat).cuda()
+
+        if trapdoor_criterion is None:
+            trapdoor_criterion = deepcopy(criterion)
+    else:
+        aug_list = lambda x: x
+        final_triggers = None
 
     for epoch in range(n_epochs):
         tf = time.time()
@@ -101,7 +113,7 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
         # LS scheduler
         if callable(getattr(criterion, 'step', None)):
             criterion.step(epoch, n_epochs)
-        if callable(getattr(trapdoor_criterion, 'step', None)):
+        if triggers is not None and callable(getattr(trapdoor_criterion, 'step', None)):
             trapdoor_criterion.step(epoch, n_epochs)
 
         trapdoor_iden_iterator = torch.hstack([
@@ -118,11 +130,13 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
             """
             Update discriminator and triggers
             """
-            if args['trapdoor']['optimized']:
+            if triggers is not None and args['trapdoor']['optimized']:
                 model.eval()
                 triggers.requires_grad = True
 
                 key = torch.stack([triggers[j] for j in trapdoor_iden], dim=0)
+                if dataset_name == 'mnist':
+                    key = key.expand(-1, 3, -1, -1)
                 trapdoor_img = blend(img, key, alpha)
 
                 trigger_loss = 0
@@ -189,29 +203,36 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
 
             aug_img = aug_list(img)
 
-            key = torch.stack([triggers[j] for j in trapdoor_iden], dim=0)
-            trapdoor_img = blend(img, key, alpha)
-            aug_trapdoor_img = aug_list(trapdoor_img)
+            if triggers is not None:
+                key = torch.stack([triggers[j] for j in trapdoor_iden], dim=0)
+                if dataset_name == 'mnist':
+                    key = key.expand(-1, 3, -1, -1)
+                trapdoor_img = blend(img, key, alpha)
+                aug_trapdoor_img = aug_list(trapdoor_img)
 
-            concat_feat, concat_prob = model(torch.concat([aug_img, aug_trapdoor_img]))
-            feats, out_prob = concat_feat[:bs], concat_prob[:bs]
-            trapdoor_feats, trapdoor_out_prob = concat_feat[bs:], concat_prob[bs:]
+                concat_feat, concat_prob = model(torch.concat([aug_img, aug_trapdoor_img]))
+                feats, out_prob = concat_feat[:bs], concat_prob[:bs]
+                trapdoor_feats, trapdoor_out_prob = concat_feat[bs:], concat_prob[bs:]
 
-            cross_loss = criterion(out_prob, iden)
+                cross_loss = criterion(out_prob, iden)
 
-            trapdoor_loss = trapdoor_criterion(trapdoor_out_prob, trapdoor_iden)
+                trapdoor_loss = trapdoor_criterion(trapdoor_out_prob, trapdoor_iden)
 
-            discriminator_loss = 0
-            if args['trapdoor']['discriminator_feat_model_loss']:
-                D_feat.eval()
-                concat_feat = torch.hstack([concat_feat, (concat_prob == concat_prob.max(dim=1).values.unsqueeze(dim=1)).float().detach()])
-                concat_dis_prob = D_feat(concat_feat)
-                discriminator_loss = nn.BCEWithLogitsLoss()(
-                    concat_dis_prob,
-                    torch.concat([0.5 * torch.ones((bs, 1)), 0.5 * torch.ones((bs, 1))]).cuda()
-                )
+                discriminator_loss = 0
+                if args['trapdoor']['discriminator_feat_model_loss']:
+                    D_feat.eval()
+                    concat_feat = torch.hstack([concat_feat, (concat_prob == concat_prob.max(dim=1).values.unsqueeze(dim=1)).float().detach()])
+                    concat_dis_prob = D_feat(concat_feat)
+                    discriminator_loss = nn.BCEWithLogitsLoss()(
+                        concat_dis_prob,
+                        torch.concat([0.5 * torch.ones((bs, 1)), 0.5 * torch.ones((bs, 1))]).cuda()
+                    )
 
-            loss = (1-beta) * cross_loss + beta * trapdoor_loss + beta * discriminator_loss
+                loss = (1-beta) * cross_loss + beta * trapdoor_loss + beta * discriminator_loss
+            else:
+                feats, out_prob = model(aug_img)
+                cross_loss = criterion(out_prob, iden)
+                loss = cross_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -223,9 +244,10 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
             cnt += bs
 
             main_loss_tot += cross_loss.item() * bs
-            trapdoor_loss_tot += trapdoor_loss.item() * bs
-            trapdoor_out_iden = torch.argmax(trapdoor_out_prob, dim=1).view(-1)
-            trapdoor_ACC += torch.sum(trapdoor_iden == trapdoor_out_iden).item()
+            if triggers is not None:
+                trapdoor_loss_tot += trapdoor_loss.item() * bs
+                trapdoor_out_iden = torch.argmax(trapdoor_out_prob, dim=1).view(-1)
+                trapdoor_ACC += torch.sum(trapdoor_iden == trapdoor_out_iden).item()
 
         train_loss, train_acc = loss_tot * 1.0 / cnt, ACC * 100.0 / cnt
         train_main_loss = main_loss_tot * 1.0 / cnt
@@ -238,13 +260,14 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
         if test_acc > best_ACC:
             best_ACC = test_acc
             best_model = deepcopy(model)
-            final_trapdoor_ACC = test_trapdoor_acc
-            final_triggers = deepcopy(triggers)
+            if triggers is not None:
+                final_trapdoor_ACC = test_trapdoor_acc
+                final_triggers = deepcopy(triggers)
 
         if (epoch+1) % 10 == 0:
             model_path = os.path.join(root_path, "target_ckp")
             torch.save({ 'state_dict': model.state_dict() }, os.path.join(model_path, "allclass_epoch{}.tar").format(epoch))
-            if args['trapdoor']['optimized']:
+            if triggers is not None and args['trapdoor']['optimized']:
                 trigger_path = args['trigger_path']
                 torch.save(triggers, os.path.join(trigger_path, "trigger_epoch{}.tar").format(epoch))
 
@@ -253,15 +276,16 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
         ))
         if scheduler is not None:
             scheduler.step()
-        if args['trapdoor']['discriminator_loss'] and scheduler_D is not None:
-            scheduler_D.step()
-        if args['trapdoor']['discriminator_feat_loss'] and scheduler_D_feat is not None:
-            scheduler_D_feat.step()
+        if triggers is not None:
+            if args['trapdoor']['discriminator_loss'] and scheduler_D is not None:
+                scheduler_D.step()
+            if args['trapdoor']['discriminator_feat_loss'] and scheduler_D_feat is not None:
+                scheduler_D_feat.step()
 
-    if args['trapdoor']['discriminator_loss']:
+    if triggers is not None and args['trapdoor']['discriminator_loss']:
         torch.save({ 'state_dict': D.state_dict() }, os.path.join(root_path, "discriminator.tar"))
 
-    if args['trapdoor']['discriminator_feat_loss']:
+    if triggers is not None and args['trapdoor']['discriminator_feat_loss']:
         torch.save({ 'state_dict': D_feat.state_dict() }, os.path.join(root_path, "discriminator_feat.tar"))
 
     print("Best Acc:{:.2f} | trapdoor Acc:{:.2f}".format(best_ACC, final_trapdoor_ACC))

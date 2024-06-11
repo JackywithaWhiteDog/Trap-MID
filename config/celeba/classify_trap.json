@@ -1,11 +1,11 @@
 {
-    "root_path": "./target_model/trap",
+    "root_path": "./target_model/celeba/trap",
     "pretrained_path": "./pretrained",
     "dataset":{
         "name":"celeba",
-        "train_file_path": "./data/trainset.txt",
-        "test_file_path":"./data/testset.txt",
-        "img_path": "./data/img_align_celeba",
+        "train_file_path": "./data/celeba_trainset.txt",
+        "test_file_path":"./data/celeba_testset.txt",
+        "img_path": "./data/celeba/img_align_celeba",
         "model_name":"VGG16",
         "n_classes":1000,
         "channel": 3,
