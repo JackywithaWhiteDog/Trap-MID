@@ -41,7 +41,7 @@ def main(args):
     use_trapdoor = 'trapdoor' in args
 
     negls = args[model_name].get('negls', 0)
-    criterion = utils.init_criterion(negls)
+    criterion = utils.init_criterion(negls, dataset_name)
     if use_trapdoor:
         trapdoor_negls = args['trapdoor'].get('negls', negls) # default: same as original main task
         trapdoor_criterion = utils.init_criterion(trapdoor_negls)

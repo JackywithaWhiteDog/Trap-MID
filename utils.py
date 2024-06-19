@@ -122,10 +122,11 @@ def init_optimizer(model_args, parameters):
 
     return optimizer, scheduler
 
-def init_criterion(negls):
+def init_criterion(negls, dataset_name='celeba'):
     if negls == 0:
         return torch.nn.CrossEntropyLoss().cuda()
-    return loss.NegLSCrossEntropyLoss(negls)
+    ls_scheduler = loss.mnist_ls_scheduler if dataset_name == 'mnist' else ls_scheduler
+    return loss.NegLSCrossEntropyLoss(negls, scheduler=ls_scheduler)
 
 def load_json(json_file):
     with open(json_file) as data_file:
