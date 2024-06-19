@@ -13,15 +13,9 @@ import losses as L
 import utils
 from dataset import FaceDataset, InfiniteSamplerWrapper, sample_from_data, sample_from_gen
 from models import inception
-from models.classifiers import VGG16, FaceNet, IR152, FaceNet64
+from models.classifiers import *
 from models.discriminators.snresnet64 import SNResNetProjectionDiscriminator
 from models.generators.resnet64 import ResNetGenerator
-
-print(f'>> Original number of threads: {torch.get_num_threads()}')
-thread_rate = 0.25 if torch.get_num_threads() > 16 else 1
-print(f'>> Set threading rate to be {thread_rate}')
-torch.set_num_threads(int(torch.get_num_threads() * thread_rate))
-print(f'>> Current number of threads: {torch.get_num_threads()}')
 
 def set_random_seed(seed=0):
     random.seed(seed)
@@ -70,7 +64,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Stage-1: Train the Pseudo Label-Guided Conditional GAN')
     # Dataset configuration
     parser.add_argument('--data_root', type=str, help='path to dataset root directory.')
-    parser.add_argument('--data_name', type=str, help='celeba | ffhq | facescrub')
+    parser.add_argument('--data_name', type=str, help='celeba | ffhq | facescrub | mnist')
     parser.add_argument('--target_model', type=str, help='VGG16 | IR152 | FaceNet64')
     parser.add_argument('--private_data_root', type=str, default='datasets/celeba_private_domain',
                         help='path to private dataset root directory. default: CelebA')
@@ -140,7 +134,7 @@ def get_args():
     parser.add_argument('--inv_loss_type', type=str, default='margin', help='ce | margin | poincare')
 
     parser.add_argument('--ckpt_file', type=str)
-    parser.add_argument('--eval_dir', type=str, default='')
+    parser.add_argument('--eval_file', type=str, default=None)
 
     args = parser.parse_args()
     return args
@@ -151,12 +145,16 @@ def main():
 
     # load target model
     print("Target Model:", args.target_model)
-    if args.target_model.startswith("VGG16"):
+    if args.target_model == "VGG16":
         target_model = VGG16(args.num_classes)
-    elif args.target_model.startswith('IR152'):
+    elif args.target_model == 'IR152':
         target_model = IR152(args.num_classes)
     elif args.target_model == "FaceNet64":
         target_model = FaceNet64(args.num_classes)
+    elif args.target_model == "IR18":
+        target_model = IR18(args.num_classes)
+    else:
+        raise NotImplementedError(f'Model {args.target_model} not implemented')
     target_model_path = args.ckpt_file
     target_model = torch.nn.DataParallel(target_model).cuda()
     target_model.load_state_dict(torch.load(target_model_path)['state_dict'], strict=False)
@@ -165,8 +163,11 @@ def main():
     print(f'=> Model loaded from {target_model_path}')
 
     # load evaluate model
-    evaluate_model = FaceNet(args.num_classes)
-    evaluate_model_path = os.path.join(args.eval_dir, 'checkpoints/evaluate_model/FaceNet_95.88.tar')
+    if args.data_name == 'mnist':
+        evaluate_model = VGG16(10)
+    else:
+        evaluate_model = FaceNet(args.num_classes)
+    evaluate_model_path = args.eval_file
     evaluate_model = torch.nn.DataParallel(evaluate_model).cuda()
     evaluate_model.load_state_dict(torch.load(evaluate_model_path)['state_dict'], strict=False)
     evaluate_model = evaluate_model.module # disable data parallel to ensure reproducibility
@@ -183,37 +184,47 @@ def main():
     def _noise_adder(img):
         return torch.empty_like(img, dtype=img.dtype).uniform_(0.0, 1 / 256.0) + img
 
-    # dataset crop setting
-    if args.data_name == 'celeba':
+    if args.data_name == 'mnist':
+        # Expand chennel from 1 to 3 to fit pretrained models
         re_size = 64
-        crop_size = 108
-        offset_height = (218 - crop_size) // 2
-        offset_width = (178 - crop_size) // 2
-        crop = lambda x: x[:, offset_height:offset_height + crop_size, offset_width:offset_width + crop_size]
-    elif args.data_name == 'ffhq':
-        crop_size = 88
-        offset_height = (128 - crop_size) // 2
-        offset_width = (128 - crop_size) // 2
-        re_size = 64
-        crop = lambda x: x[:, offset_height:offset_height + crop_size, offset_width:offset_width + crop_size]
-    elif args.data_name == 'facescrub':
-        re_size = 64
-        crop_size = 64
-        offset_height = (64 - crop_size) // 2
-        offset_width = (64 - crop_size) // 2
-        crop = lambda x: x[:, offset_height:offset_height + crop_size, offset_width:offset_width + crop_size]
+        my_transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize((re_size, re_size)),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Lambda(lambda x: x.expand(3, -1, -1)),
+            _noise_adder
+        ])
     else:
-        print("Wrong Dataname!")
+        # dataset crop setting
+        if args.data_name == 'celeba':
+            re_size = 64
+            crop_size = 108
+            offset_height = (218 - crop_size) // 2
+            offset_width = (178 - crop_size) // 2
+            crop = lambda x: x[:, offset_height:offset_height + crop_size, offset_width:offset_width + crop_size]
+        elif args.data_name == 'ffhq':
+            crop_size = 88
+            offset_height = (128 - crop_size) // 2
+            offset_width = (128 - crop_size) // 2
+            re_size = 64
+            crop = lambda x: x[:, offset_height:offset_height + crop_size, offset_width:offset_width + crop_size]
+        elif args.data_name == 'facescrub':
+            re_size = 64
+            crop_size = 64
+            offset_height = (64 - crop_size) // 2
+            offset_width = (64 - crop_size) // 2
+            crop = lambda x: x[:, offset_height:offset_height + crop_size, offset_width:offset_width + crop_size]
+        else:
+            print("Wrong Dataname!")
 
-    # load public dataset
-    my_transform = torchvision.transforms.Compose([
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Lambda(crop),
-        torchvision.transforms.ToPILImage(),
-        torchvision.transforms.Resize((re_size, re_size)),
-        torchvision.transforms.ToTensor(),
-        _noise_adder
-    ])
+        # load public dataset
+        my_transform = torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Lambda(crop),
+            torchvision.transforms.ToPILImage(),
+            torchvision.transforms.Resize((re_size, re_size)),
+            torchvision.transforms.ToTensor(),
+            _noise_adder
+        ])
     train_dataset = FaceDataset(args=args, root=args.data_root, transform=my_transform)
     train_loader = iter(torch.utils.data.DataLoader(
         train_dataset, args.batch_size,
@@ -245,7 +256,8 @@ def main():
     _n_cls = args.num_classes
     gen = ResNetGenerator(
         args.gen_num_features, args.gen_dim_z, args.gen_bottom_width,
-        activation=F.relu, num_classes=_n_cls, distribution=args.gen_distribution
+        activation=F.relu, num_classes=_n_cls, distribution=args.gen_distribution,
+        out_channels=1 if args.data_name == 'mnist' else 3
     ).to(device)
     dis = SNResNetProjectionDiscriminator(args.dis_num_features, _n_cls, F.relu).to(device)
     inception_model = inception.InceptionV3().to(device) if args.calc_FID else None  # Calc FID need
@@ -284,15 +296,18 @@ def main():
             if i == 0:
                 fake, pseudo_y, _ = sample_from_gen(args, device, args.num_classes, gen)
                 dis_fake = dis(fake, pseudo_y)
+                if args.data_name == 'mnist':
+                    fake = fake.expand(-1, 3, -1, -1)
                 # random transformation on the generated images
                 fake_aug = aug_list(fake)
                 # calc the L_inv
+                out = target_model(fake_aug)[-1]
                 if args.inv_loss_type == 'ce':
-                    inv_loss = L.cross_entropy_loss(target_model(fake_aug)[-1], pseudo_y)
+                    inv_loss = L.cross_entropy_loss(out, pseudo_y)
                 elif args.inv_loss_type == 'margin':
-                    inv_loss = L.max_margin_loss(target_model(fake_aug)[-1], pseudo_y)
+                    inv_loss = L.max_margin_loss(out, pseudo_y)
                 elif args.inv_loss_type == 'poincare':
-                    inv_loss = L.poincare_loss(target_model(fake_aug)[-1], pseudo_y)
+                    inv_loss = L.poincare_loss(out, pseudo_y)
                 # not used
                 if args.relativistic_loss:
                     real, y = sample_from_data(args, device, train_loader)
@@ -315,6 +330,8 @@ def main():
                     writer.add_scalar('inv', cumulative_inv_loss, n_iter)
             # generate fake images
             fake, pseudo_y, _ = sample_from_gen(args, device, args.num_classes, gen)
+            if args.data_name == 'mnist':
+                fake = fake.expand(-1, 3, -1, -1)
             # sample the real images
             real, y = sample_from_data(args, device, train_loader)
             # calc the loss of D

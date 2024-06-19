@@ -9,6 +9,14 @@ def ls_scheduler(epoch, n_epochs):
         return factor * (epoch + 1 - 50)
     return 1
 
+def mnist_ls_scheduler(epoch, n_epochs):
+    if epoch < 5:
+        return 0.0
+    if epoch < 7:
+        factor = 1 / (n_epochs - 5)
+        return factor * (epoch + 1 - 5)
+    return 1
+
 class NegLSCrossEntropyLoss(torch.nn.Module):
     def __init__(self, init_ls=0.0, scheduler=ls_scheduler):
         super().__init__()

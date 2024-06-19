@@ -5,9 +5,11 @@ import sys
 import time
 
 import torch
+import torch.utils
+from torchvision import datasets, transforms
 
 import classify
-import dataloader
+import dataset
 import loss
 
 class Tee(object):
@@ -26,22 +28,37 @@ class Tee(object):
     def flush(self):
         self.file.flush()
 
-def init_dataloader(args, file_path, batch_size=64, mode="gan"):
+def init_dataloader(args, file_path=None, batch_size=64, mode="gan"):
     tf = time.time()
 
-    if mode == "attack":
-        shuffle_flag = False
-    else:
-        shuffle_flag = True
-
     if args['dataset']['name'] == "celeba":
-        data_set = dataloader.ImageFolder(args, file_path, mode)
+        data_set = dataset.CelebA(args, file_path, mode)
+    elif args['dataset']['name'] == "mnist":
+        # Expand chennel from 1 to 3 to fit pretrained models
+        re_size = 64
+        raw_data = datasets.MNIST(
+            root=args["dataset"]["img_path"],
+            train=mode != 'test',
+            transform=transforms.Compose([
+                transforms.Resize((re_size, re_size)),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda x: x.expand(3, -1, -1)),
+            ])
+        )
+        if args['dataset'].get('eval', False):
+            # Use full dataset to train evaluation model
+            data_set = raw_data
+        else:
+            # Take samples with label 0, 1, 2, 3, 4 as the private data
+            indices = torch.where(raw_data.targets <= 4)[0]
+            data_set = torch.utils.data.Subset(raw_data, indices)
+        print(f"Load {len(data_set)} images")
     else:
-        data_set = dataloader.GrayFolder(args, file_path, mode)
+        raise NotImplementedError(f"Dataset {args['dataset']['name']} not implemented")
 
     data_loader = torch.utils.data.DataLoader(data_set,
                                 batch_size=batch_size,
-                                shuffle=shuffle_flag,
+                                shuffle=True,
                                 drop_last=True,
                                 num_workers=2,
                                 pin_memory=True)
@@ -75,6 +92,8 @@ def init_model(model_name, n_classes, pretrained_path):
         print("Loading Backbone Checkpoint ")
         load_state_dict(net.feature, torch.load(BACKBONE_RESUME_ROOT))
 
+    elif model_name == "IR18":
+        net = classify.IR18(n_classes)
     else:
         raise NotImplementedError(f"Model {model_name} not implemented.")
 
@@ -103,10 +122,11 @@ def init_optimizer(model_args, parameters):
 
     return optimizer, scheduler
 
-def init_criterion(negls):
+def init_criterion(negls, dataset_name='celeba'):
     if negls == 0:
         return torch.nn.CrossEntropyLoss().cuda()
-    return loss.NegLSCrossEntropyLoss(negls)
+    ls_scheduler = loss.mnist_ls_scheduler if dataset_name == 'mnist' else ls_scheduler
+    return loss.NegLSCrossEntropyLoss(negls, scheduler=ls_scheduler)
 
 def load_json(json_file):
     with open(json_file) as data_file:

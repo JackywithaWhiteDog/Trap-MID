@@ -67,3 +67,29 @@ class IR152(nn.Module):
         feat = feat.view(feat.size(0), -1)
         out = self.fc_layer(feat)
         return feat, out
+
+class IR18(nn.Module):
+    def __init__(self, num_classes=5):
+        super(IR18, self).__init__()
+        model = torchvision.models.resnet18(pretrained=True)
+        self.feature = nn.Sequential(
+            model.conv1,
+            model.bn1,
+            model.relu,
+            model.maxpool,
+
+            model.layer1,
+            model.layer2,
+            model.layer3,
+            model.layer4,
+
+            model.avgpool,
+            Flatten()
+        )
+        self.fc_layer = nn.Linear(model.fc.in_features, num_classes)
+
+    def forward(self, x):
+        feat = self.feature(x)
+        out = self.fc_layer(feat)
+        return feat, out
+

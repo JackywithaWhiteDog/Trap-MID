@@ -4,7 +4,8 @@ import shutil
 import torch
 import torch.nn.functional as F
 import torch.utils.data as data
-import torchvision.transforms as transforms
+import torchvision
+from torchvision import transforms, datasets
 from PIL import Image
 from argparse import ArgumentParser
 
@@ -12,7 +13,7 @@ from models.classifiers import *
 
 parser = ArgumentParser(description='Reclassify the public dataset with the target model')
 parser.add_argument('--model', default='VGG16', help='VGG16 | IR152 | FaceNet64')
-parser.add_argument('--data_name', type=str, default='celeba', help='celeba | ffhq | facescrub')
+parser.add_argument('--data_name', type=str, default='celeba', help='celeba | ffhq | facescrub | mnist')
 parser.add_argument('--top_n', type=int, help='the n of top-n selection strategy.')
 parser.add_argument('--num_classes', type=int, default=1000)
 parser.add_argument('--save_root', type=str, default='reclassified_public_data')
@@ -131,6 +132,7 @@ def top_n_selection(args, T, data_loader):
     print("=> start inference ...")
     all_images_prob = None
     all_images_path = None
+    all_images = None
     # get the predict confidence of each image in the public data
     with torch.no_grad():
         for i, (images, img_path) in enumerate(data_loader):
@@ -141,10 +143,16 @@ def top_n_selection(args, T, data_loader):
             prob = prob.cpu()
             if i == 0:
                 all_images_prob = prob
-                all_images_path = img_path
+                if args.data_name == 'mnist':
+                    all_images = transforms.Resize((28, 28))(images)
+                else:
+                    all_images_path = img_path
             else:
                 all_images_prob = torch.cat([all_images_prob, prob], dim=0)
-                all_images_path = all_images_path + img_path
+                if args.data_name == 'mnist':
+                    all_images = torch.cat([all_images, transforms.Resize((28, 28))(images)], dim=0)
+                else:
+                    all_images_path = all_images_path + img_path
 
     print("=> start reclassify ...")
     save_path = args.save_root
@@ -160,21 +168,19 @@ def top_n_selection(args, T, data_loader):
 
         for j in range(bs):
             current_value = float(class_idx_prob[j])
-            image_path = all_images_path[j]
             # Maintain a priority queue with confidence as the priority
             if q.qsize() < args.top_n:
-                q.put([current_value, image_path])
+                q.put([current_value, j])
             else:
                 current_min = q.get()
                 if current_value < current_min[0]:
                     q.put(current_min)
                 else:
-                    q.put([current_value, image_path])
+                    q.put([current_value, j])
         # reclassify and move the images
         for m in range(q.qsize()):
             q_value = q.get()
             q_prob = round(q_value[0], 4)
-            q_image_path = q_value[1]
 
             ori_save_path = os.path.join(save_path, str(class_idx))
             if not os.path.exists(ori_save_path):
@@ -182,7 +188,16 @@ def top_n_selection(args, T, data_loader):
 
             new_image_path = os.path.join(ori_save_path, str(ccc) + '_' + str(q_prob) + '.png')
 
-            shutil.copy(q_image_path, new_image_path)
+            if all_images_path:
+                q_image_path = all_images_path[q_value[1]]
+                shutil.copy(q_image_path, new_image_path)
+            else:
+                torchvision.utils.save_image(
+                    all_images[q_value[1]],
+                    new_image_path,
+                    normalize=True,
+                    padding=0
+                )
             ccc += 1
 
 
@@ -191,12 +206,16 @@ assert not os.path.exists(args.save_root)
 print("=> load target model ...")
 
 model_name_T = args.model
-if model_name_T.startswith("VGG16"):
-    T = VGG16(1000)
-elif model_name_T.startswith('IR152'):
-    T = IR152(1000)
+if model_name_T == "VGG16":
+    T = VGG16(args.num_classes)
+elif model_name_T == 'IR152':
+    T = IR152(args.num_classes)
 elif model_name_T == "FaceNet64":
-    T = FaceNet64(1000)
+    T = FaceNet64(args.num_classes)
+elif model_name_T == "IR18":
+    T = IR18(args.num_classes)
+else:
+    raise NotImplementedError(f'Model {model_name_T} not implemented.')
 path_T = os.path.join(args.ckpt_file)
 T = torch.nn.DataParallel(T).cuda()
 ckp_T = torch.load(path_T)
@@ -235,7 +254,6 @@ elif args.data_name == 'ffhq':
         transforms.ToTensor()
     ])
     data_set = PublicFFHQ(root=args.img_root, transform=ffhq_transform)
-    data_loader = data.DataLoader(data_set, batch_size=350)
 elif args.data_name == 'facescrub':
     crop_size = 54
     offset_height = (64 - crop_size) // 2
@@ -252,6 +270,21 @@ elif args.data_name == 'facescrub':
     ])
     data_set = PublicFaceScrub(file_path='data_files/facescrub_ganset.txt',
                                img_root='datasets/facescrub', transform=faceScrub_transform)
-    data_loader = data.DataLoader(data_set, batch_size=350)
+elif args.data_name == 'mnist':
+    # Expand chennel from 1 to 3 to fit pretrained models
+    re_size = 64
+    raw_data = datasets.MNIST(
+        root=args.img_root,
+        train=True,
+        transform=transforms.Compose([
+            transforms.Resize((re_size, re_size)),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda x: x.expand(3, -1, -1)),
+        ])
+    )
+    # Take samples with label 5, 6, 7, 8, 9 as the private data
+    indices = torch.where(raw_data.targets >= 5)[0]
+    data_set = torch.utils.data.Subset(raw_data, indices)
+data_loader = data.DataLoader(data_set, batch_size=350)
 print(f'=> Dataset size: {len(data_set)}')
 top_n_selection(args, T, data_loader)

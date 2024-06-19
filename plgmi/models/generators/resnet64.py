@@ -10,7 +10,7 @@ class ResNetGenerator(nn.Module):
     """Generator generates 64x64."""
 
     def __init__(self, num_features=64, dim_z=128, bottom_width=4,
-                 activation=F.relu, num_classes=0, distribution='normal'):
+                 activation=F.relu, num_classes=0, distribution='normal', out_channels=3):
         super(ResNetGenerator, self).__init__()
         self.num_features = num_features
         self.dim_z = dim_z
@@ -18,6 +18,7 @@ class ResNetGenerator(nn.Module):
         self.activation = activation
         self.num_classes = num_classes
         self.distribution = distribution
+        self.out_channels = out_channels
 
         self.l1 = nn.Linear(dim_z, 16 * num_features * bottom_width ** 2)
 
@@ -34,7 +35,7 @@ class ResNetGenerator(nn.Module):
                             activation=activation, upsample=True,
                             num_classes=num_classes)
         self.b6 = nn.BatchNorm2d(num_features)
-        self.conv6 = nn.Conv2d(num_features, 3, 1, 1)
+        self.conv6 = nn.Conv2d(num_features, out_channels, 1, 1)
 
     def _initialize(self):
         init.xavier_uniform_(self.l1.weight.tensor)

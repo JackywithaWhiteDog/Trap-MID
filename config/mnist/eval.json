@@ -1,0 +1,28 @@
+{
+    "root_path": "./target_model/mnist/evaluation",
+    "pretrained_path": "./pretrained",
+    "dataset":{
+        "name":"mnist",
+        "eval": true,
+        "img_path": "./data",
+        "model_name":"VGG16",
+        "n_classes":10,
+        "channel": 3,
+        "height": 64,
+        "width": 64
+    },
+    "VGG16":{
+        "epochs":10,
+        "batch_size":64,
+        "lr":1e-2,
+        "momentum":0.9,
+        "weight_decay":1e-4
+    },
+    "IR18":{
+        "epochs":10,
+        "batch_size":64,
+        "lr":1e-2,
+        "momentum":0.9,
+        "weight_decay":1e-4
+    }
+}
