@@ -129,7 +129,7 @@ def calc_knn(feat, iden, path):
     return (knn_dist / bs).item()
 
 
-def get_knn_dist(E, infered_image_path, private_feats_path):
+def get_knn_dist(E, infered_image_path, private_feats_path, args):
     """
     Get KNN Dist of reconstructed images.
     :param E:
@@ -158,7 +158,8 @@ def get_knn_dist(E, infered_image_path, private_feats_path):
     infered_feats = None
     images_spilt_list = images.chunk(int(images.shape[0] / 10))
     for i, images in enumerate(images_spilt_list):
-        images = augmentation.Resize((112, 112))(images).to(device)
+        if args.data_name != 'mnist':
+            images = augmentation.Resize((112, 112))(images).to(device)
         feats = E(images)[0]
         if i == 0:
             infered_feats = feats.detach().cpu()
@@ -186,13 +187,15 @@ def evaluate(args, current_iter, gen, device, inception_model=None, eval_iter=No
             gen, device, args.batch_size, args.gen_dim_z,
             args.gen_distribution, class_id=class_id
         )
+        if args.data_name == 'mnist':
+            fake = fake.expand(-1, 3, -1, -1)
         if calc_fid and i <= args.n_fid_batches:
             fake_list.append((fake.cpu().numpy() + 1.0) / 2.0)
             real_list.append((next(eval_iter)[0].cpu().numpy() + 1.0) / 2.0)
         # Save generated images.
         root = args.eval_image_root
         if conditional:
-            root = os.path.join(root, "class_id_{:04d}".format(i))
+            root = os.path.join(root, "class_id_{:04d}".format(class_id))
         if not os.path.isdir(root):
             os.makedirs(root)
         fn = "image_iter_{:07d}_batch_{:04d}.png".format(current_iter, i)
