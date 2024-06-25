@@ -153,6 +153,8 @@ def main():
         target_model = FaceNet64(args.num_classes)
     elif args.target_model == "IR18":
         target_model = IR18(args.num_classes)
+    elif args.target_model == 'VGG16_BiDO':
+        target_model = VGG16_BiDO(args.num_classes)
     else:
         raise NotImplementedError(f'Model {args.target_model} not implemented')
     target_model_path = args.ckpt_file

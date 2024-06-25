@@ -92,12 +92,16 @@ if __name__ == "__main__":
 
     model_name_T = opt.model_name_T
 
-    if model_name_T.startswith("VGG16"):
+    if model_name_T == "VGG16":
         T = VGG16(1000)
-    elif model_name_T.startswith('IR152'):
+    elif model_name_T == 'IR152':
         T = IR152(1000)
     elif model_name_T == "FaceNet64":
         T = FaceNet64(1000)
+    elif model_name_T == "VGG16_BiDO":
+        T = VGG16_BiDO(1000)
+    else:
+        raise NotImplementedError(f'Model {model_name_T} not implemented.')
     path_T = opt.ckpt_file
     print("Target Model: ", path_T)
 
