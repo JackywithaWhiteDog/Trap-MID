@@ -6,6 +6,7 @@ import kornia
 import torch
 import torch.nn as nn
 
+from loss import BiDOLoss
 import utils
 
 def blend(img, key, alpha):
@@ -65,6 +66,17 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
     n_classes = args['dataset']['n_classes']
     data_size = trainloader.batch_size * len(trainloader)
     num_trapdoor, last_trapdoor = divmod(data_size, n_classes)
+
+    if 'bido' in args:
+        bido_criterion = BiDOLoss(
+            n_classes=n_classes,
+            measure=args['bido']['measure'],
+            ktype=args['bido']['ktype'],
+            lambda_xz=args['bido']['lambda_xz'],
+            lambda_yz=args['bido']['lambda_yz']
+        )
+    else:
+        bido_criterion = None
 
     if triggers is not None:
         # Only use augmentation when incorporating trapdoors
@@ -233,6 +245,10 @@ def train(args, model, criterion, optimizer, trainloader, testloader, n_epochs, 
                 feats, out_prob = model(aug_img)
                 cross_loss = criterion(out_prob, iden)
                 loss = cross_loss
+
+            if bido_criterion:
+                bido_loss = bido_criterion(aug_img, feats, iden)
+                loss += bido_loss
 
             optimizer.zero_grad()
             loss.backward()
