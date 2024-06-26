@@ -141,7 +141,7 @@ def get_model(attack_name, classes):
 
 def get_augmodel(model_name, nclass, path_T=None, dataset='celeba'):
     if model_name=="VGG16":
-        model = VGG16(nclass)   
+        model = VGG16(nclass)
     elif model_name=="FaceNet":
         model = FaceNet(nclass)
     elif model_name=="FaceNet64":
@@ -149,11 +149,15 @@ def get_augmodel(model_name, nclass, path_T=None, dataset='celeba'):
     elif model_name=="IR152":
         model = IR152(nclass)
     elif model_name =="efficientnet_b0":
-        model = classify.EfficientNet_b0(nclass)   
+        model = classify.EfficientNet_b0(nclass)
     elif model_name =="efficientnet_b1":
-        model = classify.EfficientNet_b1(nclass)   
+        model = classify.EfficientNet_b1(nclass)
     elif model_name =="efficientnet_b2":
-        model = classify.EfficientNet_b2(nclass)  
+        model = classify.EfficientNet_b2(nclass)
+    elif model_name =="VGG16_BiDO":
+        model = classify.VGG16_BiDO(nclass)
+    else:
+        raise NotImplementedError(f'Model {model_name} not implemented.')
 
     model = torch.nn.DataParallel(model).cuda()
     if path_T is not None: 

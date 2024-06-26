@@ -32,7 +32,7 @@ def main(args):
 
     n_classes = args["dataset"]["n_classes"]
     pretrained_path = args['pretrained_path']
-    net = utils.init_model(model_name, n_classes, pretrained_path)
+    net = utils.init_model(model_name, n_classes, pretrained_path, bido="bido" in args)
 
     optimizer, scheduler = utils.init_optimizer(args[model_name], net.parameters())
     print(optimizer)
@@ -110,6 +110,6 @@ if __name__ == '__main__':
 
     print(log_file)
     print("---------------------Training [%s]---------------------" % model_name)
-    utils.print_params(args["dataset"], args[model_name], trap_info=args.get("trapdoor", None))
+    utils.print_params(args["dataset"], args[model_name], trap_info=args.get("trapdoor", None), bido_info=args.get("bido", None))
 
     main(args)

@@ -352,12 +352,16 @@ if __name__ == "__main__":
     ckp_D = torch.load(path_D)
     D.load_state_dict(ckp_D['state_dict'], strict=False)
 
-    if args.model.startswith("VGG16"):
+    if args.model == "VGG16":
         T = VGG16(1000)
-    elif args.model.startswith('IR152'):
+    elif args.model == 'IR152':
         T = IR152(1000)
     elif args.model == "FaceNet64":
         T = FaceNet64(1000)
+    elif args.model == "VGG16_BiDO":
+        T = VGG16_BiDO(1000)
+    else:
+        raise NotImplementedError(f'Model {args.model} not implemented.')
     path_T = os.path.join(args.ckpt_file)
     print("Target Model: ", path_T)
 

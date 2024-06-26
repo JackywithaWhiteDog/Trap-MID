@@ -214,6 +214,8 @@ elif model_name_T == "FaceNet64":
     T = FaceNet64(args.num_classes)
 elif model_name_T == "IR18":
     T = IR18(args.num_classes)
+elif model_name_T == 'VGG16_BiDO':
+    T = VGG16_BiDO(args.num_classes)
 else:
     raise NotImplementedError(f'Model {model_name_T} not implemented.')
 path_T = os.path.join(args.ckpt_file)
