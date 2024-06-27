@@ -940,7 +940,8 @@ class VGG16_BiDO(nn.Module):
 
         res = self.fc_layer(feature)
 
-        return hiddens, res
+        # Return the penultimate hidden state
+        return hiddens[-1], res
 
 ################################################################
 
