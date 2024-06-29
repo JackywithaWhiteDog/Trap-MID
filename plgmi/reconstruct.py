@@ -238,6 +238,8 @@ if __name__ == "__main__":
         T = IR18(args.num_classes)
     elif args.model == 'VGG16_BiDO':
         T = VGG16_BiDO(args.num_classes)
+    elif args.model == 'IR18_BiDO':
+        T = IR18_BiDO(args.num_classes)
     else:
         raise NotImplementedError(f'Mode {args.model} not implemented.')
     path_T = args.ckpt_file

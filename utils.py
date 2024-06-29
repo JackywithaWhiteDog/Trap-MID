@@ -166,7 +166,7 @@ def load_feature_extractor(net, state_dict):
         net_state[name].copy_(mew_param.data)
 
 def init_model(model_name, n_classes, pretrained_path, bido=False):
-    if bido and model_name != "VGG16":
+    if bido and model_name not in ("VGG16", "IR18"):
         raise NotImplementedError(f"Model {model_name} not implemented for BiDO.")
 
     if model_name == "VGG16":
@@ -193,6 +193,8 @@ def init_model(model_name, n_classes, pretrained_path, bido=False):
         return net
 
     if model_name == "IR18":
+        if bido:
+            return classify.IR18_BiDO(n_classes)
         return classify.IR18(n_classes)
 
     raise NotImplementedError(f"Model {model_name} not implemented.")

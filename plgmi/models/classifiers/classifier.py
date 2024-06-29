@@ -317,3 +317,38 @@ class VGG16_BiDO(nn.Module):
         res = self.fc_layer(feature)
 
         return hiddens, res
+
+class IR18_BiDO(nn.Module):
+    def __init__(self, num_classes=5):
+        super(IR18_BiDO, self).__init__()
+        model = torchvision.models.resnet18(pretrained=True)
+        self.input_layer = nn.Sequential(
+            model.conv1,
+            model.bn1,
+            model.relu,
+            model.maxpool
+        )
+        self.layer1 = model.layer1
+        self.layer2 = model.layer2
+        self.layer3 = model.layer3
+        self.layer4 = model.layer4
+        self.output_layer = nn.Sequential(
+            model.avgpool,
+            Flatten()
+        )
+        self.fc_layer = nn.Linear(model.fc.in_features, num_classes)
+
+    def forward(self, x):
+        hiddens = []
+        feat = self.input_layer(x)
+        feat = self.layer1(feat)
+        hiddens.append(feat)
+        feat = self.layer2(feat)
+        hiddens.append(feat)
+        feat = self.layer3(feat)
+        hiddens.append(feat)
+        feat = self.layer4(feat)
+        hiddens.append(feat)
+        feat = self.output_layer(feat)
+        out = self.fc_layer(feat)
+        return hiddens, out
