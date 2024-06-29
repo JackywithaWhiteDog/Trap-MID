@@ -1,5 +1,5 @@
 {
-    "root_path": "./target_model/mnist/unprotected",
+    "root_path": "./target_model/mnist/negls",
     "pretrained_path": "./pretrained",
     "dataset":{
         "name":"mnist",
